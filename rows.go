@@ -185,15 +185,31 @@ func (rows *binaryRows) NextResultSet() error {
 }
 
 func (rows *binaryRows) Next(dest []driver.Value) error {
-	if mc := rows.mc; mc != nil {
-		if err := mc.error(); err != nil {
-			return err
-		}
-
-		// Fetch next row from stream
-		return rows.readRow(dest)
+	if rows.mc == nil {
+		return io.EOF
 	}
-	return io.EOF
+
+	mc := rows.mc
+	if mc.netConn == nil {
+		return ErrInvalidConn
+	}
+
+	// Fetch next row from stream
+	err := rows.readRow(dest)
+	done := false
+	if err != nil {
+		if err == io.EOF {
+			done = true
+		}
+		if _, ok := err.(*MySQLError); ok {
+			done = true
+		}
+	}
+	if done {
+		rows.mc = nil
+	}
+
+	return err
 }
 
 func (rows *textRows) NextResultSet() (err error) {
